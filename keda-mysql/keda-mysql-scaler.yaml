@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secrets
+  namespace: default
+type: Opaque
+data:
+  mysql_conn_str: cm9vdDpwYXNzd29yZEB0Y3AobXlzcWwuZGVmYXVsdC5zdmMuY2x1c3Rlci5sb2NhbDozMzA2KS9rZWRhYXBw # base64 encoded value of mysql connectionString of format user:password@tcp(mysql:3306)/stats_db
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-trigger-auth-mysql-secret
+  namespace: default
+spec:
+  secretTargetRef:
+  - parameter: connectionString
+    name: mysql-secrets
+    key: mysql_conn_str
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: mysql-scaledobject
+  namespace: default
+spec:
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 60        
+  pollingInterval: 5
+  cooldownPeriod:  5
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  scaleTargetRef:
+    apiVersion:    apps/v1
+    kind:          Deployment
+    name:          example-workload
+  triggers:
+  - type: mysql
+    metadata:
+      queryValue: "1"
+      activationQueryValue: "2"
+      query: "SELECT CEIL(COUNT(*) / 2) FROM onlineusers WHERE status='online'"
+    authenticationRef:
+      name: keda-trigger-auth-mysql-secret
